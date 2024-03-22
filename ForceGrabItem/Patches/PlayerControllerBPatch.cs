@@ -1,0 +1,229 @@
+using System;
+using System.Text.RegularExpressions;
+using GameNetcodeStuff;
+using HarmonyLib;
+using MonoMod.Utils;
+using Unity.Netcode;
+using UnityEngine;
+using UnityEngine.InputSystem;
+using Object = UnityEngine.Object;
+
+namespace ForceGrabItem.Patches;
+
+[HarmonyPatch(typeof(PlayerControllerB))]
+public static class PlayerControllerBPatch {
+    private static readonly int _GrabInvalidated = Animator.StringToHash("GrabInvalidated");
+    private static readonly int _GrabValidated = Animator.StringToHash("GrabValidated");
+    private static readonly int _CancelHolding = Animator.StringToHash("cancelHolding");
+    private static readonly int _Throw = Animator.StringToHash("Throw");
+
+    private static readonly Regex _DirtyInteractRegex = new("Interact:<(Keyboard|Mouse)>/", RegexOptions.Compiled);
+
+    [HarmonyPatch("SetHoverTipAndCurrentInteractTrigger")]
+    [HarmonyPrefix]
+    // ReSharper disable once InconsistentNaming
+    public static bool BeforeSetHoverTipAndCurrentInteractTrigger(PlayerControllerB __instance) {
+        if (ForceGrabItemInputActions.instance.NormalGrabKey.IsPressed())
+            return true;
+
+        if (__instance.hoveringOverTrigger != null && __instance.hoveringOverTrigger.isBeingHeldByPlayer)
+            return true;
+
+        if (!IsLocalPlayer(__instance) || __instance.isGrabbingObjectAnimation)
+            return true;
+
+        if (!RaycastForObject(__instance, out var hit)) {
+            ClearTriggerAndTip(__instance);
+            return true;
+        }
+
+        if (__instance.FirstEmptyItemSlot() == -1) {
+            __instance.cursorTip.text = "Inventory full!";
+            return false;
+        }
+
+        var grabObject = hit.collider.GetComponent<GrabbableObject>();
+
+        if (grabObject != null)
+            __instance.hoveringOverTrigger = null;
+
+        if (grabObject != null && !string.IsNullOrEmpty(grabObject.customGrabTooltip)) {
+            __instance.cursorTip.text = grabObject.customGrabTooltip;
+            return false;
+        }
+
+        var keyToPress = GetInteractKey();
+        __instance.cursorTip.text = $"Grab : [{keyToPress}]";
+        __instance.cursorIcon.enabled = true;
+        __instance.cursorIcon.sprite = __instance.grabItemIcon;
+
+        return false;
+    }
+
+    [HarmonyPatch("Interact_performed")]
+    [HarmonyPostfix]
+    // ReSharper disable once InconsistentNaming
+    public static void Interact_performed(PlayerControllerB __instance, ref InputAction.CallbackContext context) {
+        if (ForceGrabItemInputActions.instance.NormalGrabKey.IsPressed())
+            return;
+
+        if (__instance.hoveringOverTrigger != null && __instance.hoveringOverTrigger.isBeingHeldByPlayer)
+            return;
+
+        if (((!__instance.IsOwner || !__instance.isPlayerControlled ||
+              __instance is { IsServer: true, isHostPlayerObject: false }) && !__instance.isTestingPlayer) ||
+            !context.performed)
+            return;
+
+        BeginGrabObject(__instance);
+    }
+
+    private static void BeginGrabObject(PlayerControllerB instance) {
+        ForceGrabItemHook.OnPreBeforeGrabObject(instance, null);
+
+        if (!IsLocalPlayer(instance))
+            return;
+
+        if (!RaycastForObject(instance, out var hit))
+            return;
+
+        var grabObject = hit.collider.GetComponent<GrabbableObject>();
+
+        ForceGrabItemHook.OnBeforeGrabObject(instance, grabObject);
+
+        if (grabObject == null || instance.inSpecialInteractAnimation || instance.isGrabbingObjectAnimation ||
+            grabObject.isHeld || grabObject.isPocketed)
+            return;
+
+        var networkObject = grabObject.NetworkObject;
+
+        if (networkObject == null || !networkObject.IsSpawned)
+            return;
+
+        try {
+            grabObject.InteractItem();
+        }
+        catch (Exception exception) {
+            exception.LogDetailed();
+        }
+
+        if (instance.twoHanded)
+            return;
+
+        if (!grabObject.grabbable || instance.FirstEmptyItemSlot() == -1)
+            return;
+
+        ResetAnimators(instance);
+
+        instance.currentlyGrabbingObject = grabObject;
+
+        instance.SetSpecialGrabAnimationBool(true);
+        instance.isGrabbingObjectAnimation = true;
+
+        instance.cursorIcon.enabled = false;
+        instance.cursorTip.text = "";
+
+        instance.twoHanded = grabObject.itemProperties.twoHanded;
+
+        instance.carryWeight += Mathf.Clamp(grabObject.itemProperties.weight - 1f, 0.0f, 10f);
+
+        instance.grabObjectAnimationTime = grabObject.itemProperties.grabAnimationTime <= 0.0f
+            ? 0.4f
+            : grabObject.itemProperties.grabAnimationTime;
+
+        if (!instance.isTestingPlayer)
+            instance.GrabObjectServerRpc((NetworkObjectReference)networkObject);
+
+        instance.grabObjectCoroutine = instance.StartCoroutine(instance.GrabObject());
+
+        ForceGrabItemHook.OnAfterGrabObject(instance, grabObject);
+    }
+
+    private static bool IsLocalPlayer(Object player) {
+        return player == StartOfRound.Instance.localPlayerController;
+    }
+
+
+    private static bool RaycastForObject(PlayerControllerB player, out RaycastHit hit) {
+        if (player == null || player.gameplayCamera == null) {
+            hit = default;
+            return false;
+        }
+
+        var cameraTransform = player.gameplayCamera.transform;
+
+        var position = cameraTransform.position;
+        var forward = cameraTransform.forward;
+
+        var ray = new Ray(position, forward);
+
+        // Raycast to detect grabbable objects
+        var raycastHit = Physics.Raycast(ray, out hit, player.grabDistance, player.grabbableObjectsMask | (1 << 8)) &&
+                         hit.collider.CompareTag("PhysicsProp");
+
+        if (!raycastHit)
+            return false;
+
+        // Check if there's a door obstructing the grabbable object
+        var doorRaycastHit = Physics.Raycast(ray, out var doorHit, player.grabDistance, 1 << 9);
+
+        if (!doorRaycastHit)
+            return true; // No door hit, allow grabbing
+
+        var doorLock = doorHit.collider.GetComponent<DoorLock>();
+
+        if (doorLock == null)
+            return true; // No DoorLock component found, allow grabbing
+
+        var doorColliders = doorLock.gameObject.GetComponents<BoxCollider>();
+
+        foreach (var collider in doorColliders) {
+            // A trigger allows the player to pass through
+            // We only want physical colliders
+            if (!collider || collider.isTrigger)
+                continue;
+
+            var originalSize = collider.size;
+
+            // Modify collider size. The x value actually works against us in our case
+            collider.size = new Vector3(0, originalSize.y, originalSize.z);
+
+            var boxHit = collider.Raycast(ray, out var boxHitInfo, player.grabDistance);
+
+            collider.size = originalSize; // Revert to original size
+
+            if (!boxHit)
+                continue;
+
+            // Check if the door is closer than the grabbed object
+            return boxHitInfo.distance >= hit.distance;
+        }
+
+        return true; // No collision with the door, allow grabbing
+    }
+
+
+    private static void ClearTriggerAndTip(PlayerControllerB playerControllerB) {
+        playerControllerB.cursorIcon.enabled = false;
+        playerControllerB.cursorTip.text = "";
+
+        if (playerControllerB.hoveringOverTrigger != null)
+            playerControllerB.previousHoveringOverTrigger = playerControllerB.hoveringOverTrigger;
+
+        playerControllerB.hoveringOverTrigger = null;
+    }
+
+    private static void ResetAnimators(PlayerControllerB playerControllerB) {
+        var animator = playerControllerB.playerBodyAnimator;
+        animator.SetBool(_GrabInvalidated, false);
+        animator.SetBool(_GrabValidated, false);
+        animator.SetBool(_CancelHolding, false);
+        animator.ResetTrigger(_Throw);
+    }
+
+    private static string GetInteractKey() {
+        var interactAction = IngamePlayerSettings.Instance.playerInput.actions.FindAction("Interact");
+        var keyToPress = interactAction.bindings[0].ToString();
+        return _DirtyInteractRegex.Replace(keyToPress, "").ToUpper();
+    }
+}
