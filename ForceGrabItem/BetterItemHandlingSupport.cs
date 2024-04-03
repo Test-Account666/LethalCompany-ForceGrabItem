@@ -27,7 +27,9 @@ public static class BetterItemHandlingSupport {
         if (!FindBeginGrabObjectPrefixMethod())
             return;
 
-        _beginGrabObjectPrefixMethod?.Invoke(null, [grabObjectEventArgs.playerControllerB]);
+        _beginGrabObjectPrefixMethod?.Invoke(null, [
+            grabObjectEventArgs.playerControllerB,
+        ]);
     }
 
     private static void AfterBeginGrabObject(GrabObjectEventArgs grabObjectEventArgs) {
@@ -40,7 +42,9 @@ public static class BetterItemHandlingSupport {
         if (!FindBeginGrabObjectPostfixMethod())
             return;
 
-        _beginGrabObjectPostfixMethod?.Invoke(null, [grabObjectEventArgs.playerControllerB]);
+        _beginGrabObjectPostfixMethod?.Invoke(null, [
+            grabObjectEventArgs.playerControllerB,
+        ]);
     }
 
     private static bool FindBetterItemHandlingAssembly() {
@@ -67,8 +71,10 @@ public static class BetterItemHandlingSupport {
             return true;
 
         _playerControllerBPatchesType = AccessTools.GetTypesFromAssembly(_betterItemHandlingAssembly)
-            .Where((Func<Type, bool>)(type =>
-                type.FullName is "BetterItemHandling.Patches.PlayerControllerBPatches")).FirstOrDefault();
+                                                   .Where((Func<Type, bool>) (type =>
+                                                              type.FullName is
+                                                                  "BetterItemHandling.Patches.PlayerControllerBPatches"))
+                                                   .FirstOrDefault();
 
         if (_playerControllerBPatchesType is not null)
             return true;
@@ -83,7 +89,9 @@ public static class BetterItemHandlingSupport {
 
         _beginGrabObjectPrefixMethod =
             AccessTools.DeclaredMethod(_playerControllerBPatchesType, "BeginGrabObjectPrefix",
-                [typeof(PlayerControllerB)]);
+            [
+                typeof(PlayerControllerB),
+            ]);
 
         if (_beginGrabObjectPrefixMethod is not null)
             return true;
@@ -98,7 +106,9 @@ public static class BetterItemHandlingSupport {
 
         _beginGrabObjectPostfixMethod =
             AccessTools.DeclaredMethod(_playerControllerBPatchesType, "BeginGrabObjectPostfix",
-                [typeof(PlayerControllerB)]);
+            [
+                typeof(PlayerControllerB),
+            ]);
 
         if (_beginGrabObjectPostfixMethod is not null)
             return true;

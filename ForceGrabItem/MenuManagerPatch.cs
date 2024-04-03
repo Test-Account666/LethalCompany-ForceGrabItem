@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using GameNetcodeStuff;
 using HarmonyLib;
-using Mono.Collections.Generic;
 
 namespace ForceGrabItem;
 
@@ -12,7 +11,7 @@ public static class MenuManagerPatch {
     [HarmonyPostfix]
     public static void CheckForGrabObjectPatches() {
         var patches = Harmony.GetPatchInfo(AccessTools.DeclaredMethod(typeof(PlayerControllerB),
-            nameof(PlayerControllerB.BeginGrabObject)));
+                                                                      nameof(PlayerControllerB.BeginGrabObject)));
 
         if (patches == null)
             return;
@@ -33,7 +32,8 @@ public static class MenuManagerPatch {
         ForceGrabItem.Logger.LogWarning("Please report any issues!");
 
 
-        HashSet<string> patchOwnerSet = [];
+        HashSet<string> patchOwnerSet = [
+        ];
 
         foreach (var allPatch in allPatches)
             patchOwnerSet.Add(allPatch.owner);

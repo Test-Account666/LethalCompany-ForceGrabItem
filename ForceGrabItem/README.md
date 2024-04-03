@@ -9,7 +9,8 @@ But I'm sure you had a friend dying right at the main entrance and couldn't pick
 No again?<br>
 Well... Umm, this is embarrassing...<br>
 
-It's not a very common issue, but it bugged me personally since I started playing Lethal Company, so I finally fixed  it.<br>
+It's not a very common issue, but it bugged me personally since I started playing Lethal Company, so I finally fixed
+it.<br>
 Oh... Have i mentioned that this mod should also allow you to grab items though door triggers?<br>
 No? Well, now I have :)<br>
 

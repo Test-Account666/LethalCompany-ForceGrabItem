@@ -21,41 +21,46 @@ public static class PlayerControllerBPatch {
 
     [HarmonyPatch("SetHoverTipAndCurrentInteractTrigger")]
     [HarmonyPrefix]
+    [HarmonyBefore("com.kodertech.TelevisionController")]
     // ReSharper disable once InconsistentNaming
-    public static bool BeforeSetHoverTipAndCurrentInteractTrigger(PlayerControllerB __instance) {
+    public static bool BeforeSetHoverTipAndCurrentInteractTrigger(PlayerControllerB __instance) =>
+        DependencyChecker.IsTelevisionControllerInstalled()
+     || HandleSetHoverTipAndCurrentInteractTrigger(__instance);
+
+    public static bool HandleSetHoverTipAndCurrentInteractTrigger(PlayerControllerB playerControllerB) {
         if (ForceGrabItemInputActions.instance.NormalGrabKey.IsPressed())
             return true;
 
-        if (__instance.hoveringOverTrigger != null && __instance.hoveringOverTrigger.isBeingHeldByPlayer)
+        if (playerControllerB.hoveringOverTrigger != null && playerControllerB.hoveringOverTrigger.isBeingHeldByPlayer)
             return true;
 
-        if (!IsLocalPlayer(__instance) || __instance.isGrabbingObjectAnimation)
+        if (!IsLocalPlayer(playerControllerB) || playerControllerB.isGrabbingObjectAnimation)
             return true;
 
-        if (!RaycastForObject(__instance, out var hit)) {
-            ClearTriggerAndTip(__instance);
+        if (!RaycastForObject(playerControllerB, out var hit)) {
+            ClearTriggerAndTip(playerControllerB);
             return true;
         }
 
-        if (__instance.FirstEmptyItemSlot() == -1) {
-            __instance.cursorTip.text = "Inventory full!";
+        if (playerControllerB.FirstEmptyItemSlot() == -1) {
+            playerControllerB.cursorTip.text = "Inventory full!";
             return false;
         }
 
         var grabObject = hit.collider.GetComponent<GrabbableObject>();
 
         if (grabObject != null)
-            __instance.hoveringOverTrigger = null;
+            playerControllerB.hoveringOverTrigger = null;
 
         if (grabObject != null && !string.IsNullOrEmpty(grabObject.customGrabTooltip)) {
-            __instance.cursorTip.text = grabObject.customGrabTooltip;
+            playerControllerB.cursorTip.text = grabObject.customGrabTooltip;
             return false;
         }
 
         var keyToPress = GetInteractKey();
-        __instance.cursorTip.text = $"Grab : [{keyToPress}]";
-        __instance.cursorIcon.enabled = true;
-        __instance.cursorIcon.sprite = __instance.grabItemIcon;
+        playerControllerB.cursorTip.text = $"Grab : [{keyToPress}]";
+        playerControllerB.cursorIcon.enabled = true;
+        playerControllerB.cursorIcon.sprite = playerControllerB.grabItemIcon;
 
         return false;
     }
@@ -102,8 +107,7 @@ public static class PlayerControllerBPatch {
 
         try {
             grabObject.InteractItem();
-        }
-        catch (Exception exception) {
+        } catch (Exception exception) {
             exception.LogDetailed();
         }
 
@@ -132,16 +136,15 @@ public static class PlayerControllerBPatch {
             : grabObject.itemProperties.grabAnimationTime;
 
         if (!instance.isTestingPlayer)
-            instance.GrabObjectServerRpc((NetworkObjectReference)networkObject);
+            instance.GrabObjectServerRpc((NetworkObjectReference) networkObject);
 
         instance.grabObjectCoroutine = instance.StartCoroutine(instance.GrabObject());
 
         ForceGrabItemHook.OnAfterGrabObject(instance, grabObject);
     }
 
-    private static bool IsLocalPlayer(Object player) {
-        return player == StartOfRound.Instance.localPlayerController;
-    }
+    private static bool IsLocalPlayer(Object player) =>
+        player == StartOfRound.Instance.localPlayerController;
 
 
     private static bool RaycastForObject(PlayerControllerB player, out RaycastHit hit) {
@@ -186,7 +189,7 @@ public static class PlayerControllerBPatch {
             var originalSize = collider.size;
 
             // Modify collider size. The x value actually works against us in our case
-            collider.size = new Vector3(0, originalSize.y, originalSize.z);
+            collider.size = new(0, originalSize.y, originalSize.z);
 
             var boxHit = collider.Raycast(ray, out var boxHitInfo, player.grabDistance);
 

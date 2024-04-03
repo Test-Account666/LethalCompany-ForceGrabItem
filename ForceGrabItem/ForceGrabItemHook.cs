@@ -7,19 +7,19 @@ public static class ForceGrabItemHook {
 
     internal static void OnPreBeforeGrabObject(PlayerControllerB playerControllerB, GrabbableObject? grabbableObject) {
         ForceGrabItem.Logger.LogDebug("OnPreBeforeGrabObject!");
-        PreBeforeGrabObject?.Invoke(new GrabObjectEventArgs(playerControllerB, grabbableObject));
+        PreBeforeGrabObject?.Invoke(new(playerControllerB, grabbableObject));
         ForceGrabItem.Logger.LogDebug(PreBeforeGrabObject != null);
     }
 
     internal static void OnBeforeGrabObject(PlayerControllerB playerControllerB, GrabbableObject? grabbableObject) {
         ForceGrabItem.Logger.LogDebug("OnBeforeGrabObject!");
-        BeforeGrabObject?.Invoke(new GrabObjectEventArgs(playerControllerB, grabbableObject));
+        BeforeGrabObject?.Invoke(new(playerControllerB, grabbableObject));
         ForceGrabItem.Logger.LogDebug(BeforeGrabObject != null);
     }
 
     internal static void OnAfterGrabObject(PlayerControllerB playerControllerB, GrabbableObject? grabbableObject) {
         ForceGrabItem.Logger.LogDebug("OnAfterGrabObject!");
-        AfterGrabObject?.Invoke(new GrabObjectEventArgs(playerControllerB, grabbableObject));
+        AfterGrabObject?.Invoke(new(playerControllerB, grabbableObject));
         ForceGrabItem.Logger.LogDebug(AfterGrabObject != null);
     }
     // ReSharper disable once EventNeverSubscribedTo.Global

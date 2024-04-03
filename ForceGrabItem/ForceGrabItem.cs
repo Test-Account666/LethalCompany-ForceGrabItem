@@ -1,12 +1,14 @@
 ﻿using BepInEx;
 using BepInEx.Logging;
+using ForceGrabItem.Patches;
 using HarmonyLib;
 
 namespace ForceGrabItem;
 
 [BepInPlugin(MyPluginInfo.PLUGIN_GUID, MyPluginInfo.PLUGIN_NAME, MyPluginInfo.PLUGIN_VERSION)]
 [BepInDependency("Yan01h.BetterItemHandling", BepInDependency.DependencyFlags.SoftDependency)]
-[BepInDependency("com.rune580.LethalCompanyInputUtils", BepInDependency.DependencyFlags.HardDependency)]
+[BepInDependency("KoderTech.TelevisionController", BepInDependency.DependencyFlags.SoftDependency)]
+[BepInDependency("com.rune580.LethalCompanyInputUtils")]
 public class ForceGrabItem : BaseUnityPlugin {
     public static ForceGrabItem Instance { get; private set; } = null!;
     internal new static ManualLogSource Logger { get; private set; } = null!;
@@ -27,11 +29,14 @@ public class ForceGrabItem : BaseUnityPlugin {
     }
 
     internal static void Patch() {
-        Harmony ??= new Harmony(MyPluginInfo.PLUGIN_GUID);
+        Harmony ??= new(MyPluginInfo.PLUGIN_GUID);
 
         Logger.LogDebug("Patching...");
 
-        Harmony.PatchAll();
+        Harmony.PatchAll(typeof(PlayerControllerBPatch));
+
+        if (DependencyChecker.IsTelevisionControllerInstalled())
+            Harmony.PatchAll(typeof(TelevisionControllerPatch));
 
         Logger.LogDebug("Finished patching!");
     }
