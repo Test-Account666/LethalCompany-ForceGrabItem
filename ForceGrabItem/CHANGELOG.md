@@ -1,6 +1,12 @@
 # Force Grab Item Mod<br>
 
+## 1.2.1
+
+\* Fixed being able to grab items through the facility locker<br>
+\# Code structure changes<br>
+
 ## 1.2.0
+
 \+ Added support for `Television_Controller` mod (I recommend searching for an alternative)<br>
 \# Code restructure
 
