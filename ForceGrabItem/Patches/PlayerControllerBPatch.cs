@@ -161,26 +161,41 @@ public static class PlayerControllerBPatch {
         var ray = new Ray(position, forward);
 
         // Raycast to detect grabbable objects
-        var raycastHit = Physics.Raycast(ray, out hit, player.grabDistance, player.grabbableObjectsMask | (1 << 8)) &&
+        var raycastHit = Physics.Raycast(ray, out hit, player.grabDistance, player.grabbableObjectsMask
+                                                                          | (1 << 8) /* Walls, etc.*/
+                                                                          | (1 << 25) /* Terrain */
+                                                                          | (1 << 12) /* PhysicsObject */) &&
                          hit.collider.CompareTag("PhysicsProp");
 
         if (!raycastHit)
             return false;
 
+        if (IsInteractableObjectHit(ray, player, hit))
+            return false;
+
         // Check if there's a door obstructing the grabbable object
-        var doorRaycastHit = Physics.Raycast(ray, out var doorHit, player.grabDistance, 1 << 9);
+        return !IsDoorHit(ray, player, hit);
+    }
 
-        if (!doorRaycastHit)
-            return true; // No door hit, allow grabbing
+#pragma warning disable Harmony003
+    private static bool PerformRaycastAndCheckConditions(Ray ray, PlayerControllerB player, RaycastHit grabbableObjectHit,
+                                                         bool checkDoor = true) {
+        var raycastHit = Physics.Raycast(ray, out var hit, player.grabDistance, 1 << 9);
 
-        var doorLock = doorHit.collider.GetComponent<DoorLock>();
+        if (!raycastHit)
+            return false; // No hit, allow grabbing
 
-        if (doorLock == null)
-            return true; // No DoorLock component found, allow grabbing
+        var doorLock = hit.collider.GetComponent<DoorLock>();
 
-        var doorColliders = doorLock.gameObject.GetComponents<BoxCollider>();
+        if (checkDoor) {
+            if (doorLock == null)
+                return false; // No DoorLock component found, allow grabbing
+        } else if (doorLock != null)
+            return false; // DoorLock found, skipping
 
-        foreach (var collider in doorColliders) {
+        var colliders = hit.collider.gameObject.GetComponents<BoxCollider>();
+
+        foreach (var collider in colliders) {
             // A trigger allows the player to pass through
             // We only want physical colliders
             if (!collider || collider.isTrigger)
@@ -188,8 +203,8 @@ public static class PlayerControllerBPatch {
 
             var originalSize = collider.size;
 
-            // Modify collider size. The x value actually works against us in our case
-            collider.size = new(0, originalSize.y, originalSize.z);
+            // Modify collider size. The x value actually works against us if it is a door
+            collider.size = new( /*checkDoor?*/ 0 /* : originalSize.x*/, originalSize.y, originalSize.z);
 
             var boxHit = collider.Raycast(ray, out var boxHitInfo, player.grabDistance);
 
@@ -198,13 +213,19 @@ public static class PlayerControllerBPatch {
             if (!boxHit)
                 continue;
 
-            // Check if the door is closer than the grabbed object
-            return boxHitInfo.distance >= hit.distance;
+            // Check if the object is closer than the grabbed object
+            return boxHitInfo.distance < grabbableObjectHit.distance;
         }
 
-        return true; // No collision with the door, allow grabbing
+        return false; // No collision with the object, allow grabbing
     }
 
+    private static bool IsDoorHit(Ray ray, PlayerControllerB player, RaycastHit grabbableObjectHit) =>
+        PerformRaycastAndCheckConditions(ray, player, grabbableObjectHit);
+
+    private static bool IsInteractableObjectHit(Ray ray, PlayerControllerB player, RaycastHit grabbableObjectHit) =>
+        PerformRaycastAndCheckConditions(ray, player, grabbableObjectHit, false);
+#pragma warning restore Harmony003
 
     private static void ClearTriggerAndTip(PlayerControllerB playerControllerB) {
         playerControllerB.cursorIcon.enabled = false;
